@@ -10,9 +10,10 @@ import {
   updateOrderDestination,
   updateOutputMode,
   updateRestaurantName,
+  updateReservationChannel,
 } from "@/services/restaurant-service"
 import { MENU_TEMPLATES, getTemplateDesign } from "@/lib/menu/templates"
-import type { MenuTemplate, OrderDestination, OutputMode, Restaurant } from "@/types/restaurant"
+import type { MenuTemplate, OrderDestination, OutputMode, ReservationChannel, Restaurant } from "@/types/restaurant"
 import type { Category } from "@/types/category"
 import type { Product } from "@/types/product"
 
@@ -436,6 +437,133 @@ function OutputModeSection({ restaurant, onSaved }: OrderHandlingSectionProps) {
   )
 }
 
+const RESERVATION_CHANNELS: Array<{ id: ReservationChannel; title: string; description: string }> = [
+  {
+    id: "none",
+    title: "Ninguna",
+    description: "No se reciben reservas por ahora. La mesa queda siempre disponible al escanear el QR.",
+  },
+  {
+    id: "whatsapp",
+    title: "WhatsApp",
+    description: "Las reservas llegan al número de WhatsApp del local. Una mesa reservada bloquea su QR durante la reserva.",
+  },
+]
+
+function ReservationChannelSection({ restaurant, onSaved }: OrderHandlingSectionProps) {
+  const initialChannel: ReservationChannel = restaurant?.reservation_channel ?? "none"
+  const initialPhone = restaurant?.phone ?? ""
+
+  const [channelOverride, setChannelOverride] = useState<ReservationChannel | null>(null)
+  const [phoneOverride, setPhoneOverride] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{ kind: "ok" | "error"; message: string } | null>(null)
+
+  const channel = channelOverride ?? initialChannel
+  const phone = phoneOverride ?? initialPhone
+  const isDirty =
+    channel !== initialChannel ||
+    (channel === "whatsapp" &&
+      phoneOverride !== null &&
+      phoneOverride.trim() !== initialPhone.trim())
+
+  async function handleSave() {
+    if (saving || !isDirty) return
+    setSaving(true)
+    setFeedback(null)
+    try {
+      const result = await updateReservationChannel({
+        channel,
+        phone: channel === "whatsapp" ? phone.trim() : "",
+      })
+      if (!result.ok) {
+        setFeedback({ kind: "error", message: result.error })
+        return
+      }
+      onSaved()
+      setChannelOverride(null)
+      setPhoneOverride(null)
+      setFeedback({ kind: "ok", message: "Cambios guardados" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+      <h3 className="text-lg font-bold text-stone-900">Reservas</h3>
+      <p className="mt-1 text-xs font-medium text-stone-500">
+        Elegí por dónde recibís las reservas. Vas a poder sumar más canales de contacto más adelante.
+      </p>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        {RESERVATION_CHANNELS.map((option) => {
+          const selected = channel === option.id
+          return (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setChannelOverride(option.id)}
+              className={`rounded-2xl border p-4 text-left transition ${
+                selected ? "border-orange-500 ring-2 ring-orange-200" : "border-stone-200 hover:border-stone-300"
+              }`}
+            >
+              <p className="text-sm font-bold text-stone-900">{option.title}</p>
+              <p className="mt-1 text-xs leading-5 text-stone-500">{option.description}</p>
+            </button>
+          )
+        })}
+      </div>
+
+      {channel === "whatsapp" && (
+        <div className="mt-6 max-w-md">
+          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-stone-500">
+            Número de WhatsApp
+          </label>
+          <input
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhoneOverride(e.target.value)}
+            maxLength={20}
+            placeholder="+56 9 1234 5678"
+            className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm font-semibold text-stone-900 outline-none focus:border-orange-300 focus:bg-white focus:ring-2 focus:ring-orange-100"
+          />
+          <p className="mt-2 text-[11px] leading-4 text-stone-500">
+            Usá formato internacional (con código de país), ej. <span className="font-mono">+56912345678</span>.
+          </p>
+        </div>
+      )}
+
+      {feedback && (
+        <p
+          className={`mt-5 rounded-lg px-3 py-2 text-xs font-medium ${
+            feedback.kind === "ok"
+              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          {feedback.message}
+        </p>
+      )}
+
+      <div className="mt-6 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !isDirty}
+          className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-bold text-white shadow transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? "Guardando..." : "Guardar cambios"}
+        </button>
+        {!isDirty && !saving && (
+          <span className="text-xs font-medium text-stone-400">Sin cambios.</span>
+        )}
+      </div>
+    </section>
+  )
+}
+
 export default function AdminSettingsPage() {
   const { restaurant, loading, refresh } = useRestaurant()
   const { categories } = useCategories({ page: 1, pageSize: 4 })
@@ -484,6 +612,14 @@ export default function AdminSettingsPage() {
 
       <RestaurantNameSection
         currentName={restaurant?.restaurant_name}
+        onSaved={() => {
+          if (restaurant) invalidateCache(`restaurant-${restaurant.id}`)
+          refresh()
+        }}
+      />
+
+      <ReservationChannelSection
+        restaurant={restaurant ?? null}
         onSaved={() => {
           if (restaurant) invalidateCache(`restaurant-${restaurant.id}`)
           refresh()

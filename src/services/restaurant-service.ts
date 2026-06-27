@@ -135,3 +135,53 @@ export async function updateRestaurantName(
   revalidatePath("/[id]/menu", "page")
   return ok(null)
 }
+
+const UpdateReservationChannelSchema = z.object({
+  channel: z.enum(["none", "whatsapp"]),
+  // Numero de contacto / WhatsApp. Se normaliza quitando separadores y debe
+  // quedar en formato internacional (E.164). Solo aplica si el canal es whatsapp.
+  phone: z
+    .string()
+    .trim()
+    .max(20, "Máximo 20 caracteres")
+    .transform((value) => value.replace(/[\s()-]/g, ""))
+    .refine(
+      (value) => value === "" || /^\+?\d{8,15}$/.test(value),
+      "Número inválido. Usá formato internacional, ej. +56912345678"
+    ),
+})
+
+export type UpdateReservationChannelInput = z.infer<typeof UpdateReservationChannelSchema>
+
+export async function updateReservationChannel(
+  input: UpdateReservationChannelInput
+): Promise<Result<null>> {
+  const parsed = UpdateReservationChannelSchema.safeParse(input)
+  if (!parsed.success) {
+    return fail(parsed.error.issues[0]?.message ?? "Datos inválidos")
+  }
+
+  const { channel, phone } = parsed.data
+
+  // Si el canal es WhatsApp el numero es obligatorio (lo necesita el agente).
+  if (channel === "whatsapp" && phone === "") {
+    return fail("Ingresá el número de WhatsApp")
+  }
+
+  const auth = await requireCurrentAdmin()
+  if (!auth.ok) return auth
+
+  const { supabase, restaurantId } = auth.data
+
+  const { error } = await supabase
+    .from("restaurants")
+    .update({
+      reservation_channel: channel,
+      phone: channel === "whatsapp" ? phone : null,
+    })
+    .eq("id", restaurantId)
+
+  if (error) return fail("No se pudo guardar los cambios")
+
+  return ok(null)
+}

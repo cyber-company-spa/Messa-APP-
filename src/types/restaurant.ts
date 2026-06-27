@@ -4,6 +4,8 @@ export type OrderDestination = "waiter" | "kitchen"
 
 export type OutputMode = "none" | "printer" | "screen"
 
+export type ReservationChannel = "none" | "whatsapp"
+
 export type PublicRestaurant = {
   id: number
   restaurant_name: string
@@ -15,4 +17,6 @@ export type Restaurant = PublicRestaurant & {
   order_destination: OrderDestination
   output_mode: OutputMode
   printer_bluetooth_name: string | null
+  phone: string | null
+  reservation_channel: ReservationChannel
 }
